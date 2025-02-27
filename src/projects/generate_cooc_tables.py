@@ -7,6 +7,7 @@ from typing import Any
 
 import networkx as nx
 import numpy as np
+import pandas as pd
 import torch
 from sae_lens import SAE
 from tqdm.autonotebook import tqdm
@@ -326,11 +327,11 @@ def process_cooccurrence_data(
     )
     
     # Save subgraphs
-    for i, subgraph in enumerate(subgraphs):
-        subgraph_dir = pj(paths["subgraph_objects"], f"{sae_name}_activation_{safe_threshold}")
-        os.makedirs(subgraph_dir, exist_ok=True)
-        with open(pj(subgraph_dir, f"subgraph_{i}.pkl"), "wb") as f:
-            pickle.dump(subgraph, f)
+    # for i, subgraph in enumerate(subgraphs):
+    #     subgraph_dir = pj(paths["subgraph_objects"], f"{sae_name}_activation_{safe_threshold}")
+    #     os.makedirs(subgraph_dir, exist_ok=True)
+    #     with open(pj(subgraph_dir, f"subgraph_{i}.pkl"), "wb") as f:
+    #         pickle.dump(subgraph, f)
     
     return edge_threshold, thresholded_matrix, subgraphs, node_info_df
 
