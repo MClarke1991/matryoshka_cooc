@@ -8,6 +8,8 @@ dependencies = [
     "pandas>=2.2.3",
     "sae-lens>=5.5.2",
     "torch>=2.6.0",
+    "wandb>=0.19.7",
+    "wormhole>=0.1.0",
 ]
 
 [build-system]

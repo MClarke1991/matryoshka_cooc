@@ -1147,6 +1147,8 @@ dependencies = [
     { name = "pandas" },
     { name = "sae-lens" },
     { name = "torch" },
+    { name = "wandb" },
+    { name = "wormhole" },
 ]
 
 [package.metadata]
@@ -1154,6 +1156,8 @@ requires-dist = [
     { name = "pandas", specifier = ">=2.2.3" },
     { name = "sae-lens", specifier = ">=5.5.2" },
     { name = "torch", specifier = ">=2.6.0" },
+    { name = "wandb", specifier = ">=0.19.7" },
+    { name = "wormhole", specifier = ">=0.1.0" },
 ]
 
 [[package]]
@@ -3050,6 +3054,12 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/52/86/7fed3dcf51604585696572cf5969f01765c368237a0cc13877431facc749/wandb-0.19.7-py3-none-win32.whl", hash = "sha256:1a7af0c7b117a1d53fcc0169c37df2de8c1c07e48e5abb9fe7182e16d4baa9b1", size = 20251332 },
     { url = "https://files.pythonhosted.org/packages/ce/be/020d511f537d3809ffb3fcedb855f5bf1daaf96ce2e0248022d015663332/wandb-0.19.7-py3-none-win_amd64.whl", hash = "sha256:2af68e147c6bf474db82ead643828198bea8a802fa2836ef1a666dfb15ef1d83", size = 20251337 },
 ]
+
+[[package]]
+name = "wormhole"
+version = "0.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/d0/ba/84bd96a671f83505c29306a5384fb8a5e25916037a40a211d3ffa9331b38/wormhole-0.1.0.tar.gz", hash = "sha256:118c8dbfb9c955a73bf79c56a56cfa4dded3290bfd3e55a4073cdb139a81c67a", size = 1595 }
 
 [[package]]
 name = "xxhash"
