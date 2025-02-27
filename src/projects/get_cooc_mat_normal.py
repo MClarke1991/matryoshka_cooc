@@ -429,7 +429,7 @@ def main() -> None:
     resjb_loaded = False
     
     # Try to load Matryoshka SAE
-    matryoshka_path = "checkpoints/gpt2-small_blocks.0.hook_resid_pre_24576_global-matryoshka-topk_32_0.0003_final.pt"
+    matryoshka_path = "checkpoints/gpt2-small_blocks.0.hook_resid_pre_49k_global-matryoshka-topk_32_0.0003_final.pt"
     try:
         matryoshka_sae, matryoshka_cfg = load_matryoshka_sae(matryoshka_path)
         matryoshka_loaded = True
