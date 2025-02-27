@@ -1,3 +1,5 @@
+from typing import Any
+
 import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
@@ -38,7 +40,7 @@ def set_device():
         return "cpu"
 
 
-def identify_day_features(sae, model, is_matryoshka=False):
+def identify_day_features(sae: GlobalBatchTopKMatryoshkaSAE | SAE, model: HookedTransformer | torch.nn.Module, is_matryoshka: bool = False) -> tuple[dict[str, dict[str, list[int]]], dict[str, torch.Tensor]]:
     """
     Identify features that correspond to days of the week
 
@@ -58,9 +60,7 @@ def identify_day_features(sae, model, is_matryoshka=False):
 
     for day in ALL_DAYS:
         # Get token ID
-        token_id = model.tokenizer.encode(" " + day)[
-            0
-        ]  # Add space for better tokenization
+        token_id = model.tokenizer.encode(" " + day)[0]  # type: ignore
         day_tokens[day] = token_id
 
     # Get embedding matrix
@@ -103,8 +103,8 @@ def identify_day_features(sae, model, is_matryoshka=False):
 
 
 def compute_feature_cooccurrence(
-    sae, activations_store, feature_indices, n_batches=50, is_matryoshka=False
-):
+    sae: GlobalBatchTopKMatryoshkaSAE | SAE, activations_store: ActivationsStore | SaeLensStore, feature_indices: list[int], n_batches: int = 50, is_matryoshka: bool = False
+) -> np.ndarray:
     """
     Compute co-occurrence matrix for specific features
 
@@ -160,7 +160,7 @@ def compute_feature_cooccurrence(
     return norm_cooccurrence.cpu().numpy()
 
 
-def visualize_cooccurrence(cooccurrence, feature_labels, title):
+def visualize_cooccurrence(cooccurrence: np.ndarray, feature_labels: list[str], title: str):
     """
     Visualize co-occurrence matrix
 
@@ -209,7 +209,7 @@ def visualize_cooccurrence(cooccurrence, feature_labels, title):
     nx.draw_networkx_nodes(G, pos, node_size=700, node_color="lightblue")
 
     # Draw edges with width proportional to weight
-    weights = [G[u][v]["weight"] * 3 for u, v in G.edges()]
+    weights: list[float] = [G[u][v]["weight"] * 3 for u, v in G.edges()]
     nx.draw_networkx_edges(G, pos, width=weights, alpha=0.7)
 
     # Draw labels
@@ -224,7 +224,7 @@ def visualize_cooccurrence(cooccurrence, feature_labels, title):
     plt.show()
 
 
-def load_matryoshka_sae(checkpoint_path=None):
+def load_matryoshka_sae(checkpoint_path: str | None = None) -> tuple[GlobalBatchTopKMatryoshkaSAE, dict[str, Any]]:
     """Load a trained matryoshka SAE model"""
     device = set_device()
 
@@ -287,6 +287,8 @@ def create_activation_store(model, cfg, sae_type="matryoshka", sae: SAE | None =
         return ActivationsStore(model, cfg)
     else:
         # For res-jb SAE, use the sae_lens activation store with required parameters
+        if sae is None:
+            raise ValueError("SAE must be provided for res-jb SAE")
         return SaeLensStore.from_sae(
             model=model,
             sae=sae,
@@ -438,11 +440,11 @@ def main():
 
         # Calculate variance in co-occurrence
         
-        matryoshka_var = np.var(squareform(np.fill_diagonal(matryoshka_cooccurrence, 0)))
-        resjb_var = np.var(squareform(resjb_cooccurrence))
+        # matryoshka_var = np.var(squareform(matryoshka_cooccurrence))
+        # resjb_var = np.var(squareform(resjb_cooccurrence))
 
-        print(f"Matryoshka co-occurrence variance: {matryoshka_var:.4f}")
-        print(f"Res-JB co-occurrence variance: {resjb_var:.4f}")
+        # print(f"Matryoshka co-occurrence variance: {matryoshka_var:.4f}")
+        # print(f"Res-JB co-occurrence variance: {resjb_var:.4f}")
 
         # Compare specific day pairs
         print("\nDay pair comparison:")
