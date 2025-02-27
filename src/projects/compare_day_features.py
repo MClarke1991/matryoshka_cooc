@@ -5,6 +5,7 @@ import pandas as pd
 import seaborn as sns
 import torch
 from sae_lens import SAE
+from sae_lens import ActivationsStore as SaeLensStore
 from scipy.spatial.distance import squareform
 from tqdm.autonotebook import tqdm
 from transformer_lens import HookedTransformer
@@ -129,7 +130,7 @@ def compute_feature_cooccurrence(
     # Process batches
     for _ in tqdm(range(n_batches), desc="Computing co-occurrence"):
         # Get batch of activations
-        batch = activations_store.next_batch()
+        batch = activations_store.next_batch().to(device)
 
         # Encode with SAE
         with torch.no_grad():
@@ -271,6 +272,31 @@ def load_resjb_sae():
     return sae
 
 
+def create_activation_store(model, cfg, sae_type="matryoshka", sae: SAE | None = None):
+    """Create appropriate activation store based on SAE type
+
+    Args:
+        model: The language model
+        cfg: Configuration dictionary
+        sae_type: Type of SAE ("matryoshka" or "resjb")
+
+    Returns:
+        Activation store instance
+    """
+    if sae_type == "matryoshka":
+        return ActivationsStore(model, cfg)
+    else:
+        # For res-jb SAE, use the sae_lens activation store with required parameters
+        return SaeLensStore.from_sae(
+            model=model,
+            sae=sae,
+            streaming=True,
+            store_batch_size_prompts=8,
+            train_batch_size_tokens=4096,
+            n_batches_in_buffer=8,
+            )
+
+
 def main():
     device = set_device()
     print(f"Using device: {device}")
@@ -301,19 +327,19 @@ def main():
         resjb_loaded = False
 
     # Set up activation stores
-    matryoshka_activation_store = ActivationsStore(model, matryoshka_cfg)
+    matryoshka_activation_store = create_activation_store(model, matryoshka_cfg, "matryoshka")
 
     if resjb_loaded:
         # Create compatible config for resjb
         resjb_cfg = get_default_cfg()
         resjb_cfg["model_name"] = "gpt2-small"
         resjb_cfg["layer"] = 0
-        resjb_cfg["site"] = "blocks.0"
+        resjb_cfg["site"] = "blocks.0.hook_resid_pre"  # Updated hook point
         resjb_cfg["act_size"] = 768
         resjb_cfg["device"] = device
         resjb_cfg = post_init_cfg(resjb_cfg)
 
-        resjb_activation_store = ActivationsStore(model, resjb_cfg)
+        resjb_activation_store = create_activation_store(model, resjb_cfg, "resjb", resjb_sae)
 
     # Identify day features in both SAEs
     print("Identifying day-of-week features in Matryoshka SAE...")
@@ -411,7 +437,8 @@ def main():
         print(f"Res-JB average co-occurrence: {resjb_avg:.4f}")
 
         # Calculate variance in co-occurrence
-        matryoshka_var = np.var(squareform(matryoshka_cooccurrence))
+        
+        matryoshka_var = np.var(squareform(np.fill_diagonal(matryoshka_cooccurrence, 0)))
         resjb_var = np.var(squareform(resjb_cooccurrence))
 
         print(f"Matryoshka co-occurrence variance: {matryoshka_var:.4f}")
