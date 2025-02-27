@@ -1,3 +1,6 @@
+import json
+import os
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -17,7 +20,10 @@ def load_matryoshka_sae(
     if cfg_dict is None:
         cfg = get_default_cfg()
         # Override default config with visualization-specific settings
-        cfg.update(
+    else:
+        cfg = cfg_dict
+        
+    cfg.update(
             {
                 "model_name": "gpt2-small",
                 "layer": 0,
@@ -40,15 +46,27 @@ def load_matryoshka_sae(
                 "num_batches_in_buffer": 10,
             }
         )
-        cfg = post_init_cfg(cfg)
-    else:
-        cfg = cfg_dict
+    cfg = post_init_cfg(cfg)
+
+    # Load trained weights and config
+    state_dict = torch.load(checkpoint_path, map_location=cfg["device"])
+    
+    # If this is a checkpoint file, it might contain the config in a specific format
+    if isinstance(checkpoint_path, str) and checkpoint_path.endswith('.pt'):
+        checkpoint_dir = os.path.dirname(checkpoint_path)
+        config_path = os.path.join(checkpoint_dir, 'config.json')
+        if os.path.exists(config_path):
+            with open(config_path, 'r') as f:
+                checkpoint_cfg = json.load(f)
+                # Convert group_sizes from string to list if needed
+                if isinstance(checkpoint_cfg.get('group_sizes'), str):
+                    checkpoint_cfg['group_sizes'] = json.loads(checkpoint_cfg['group_sizes'])
+                cfg.update(checkpoint_cfg)
 
     # Create model with the same architecture
     sae = GlobalBatchTopKMatryoshkaSAE(cfg)
 
     # Load trained weights
-    state_dict = torch.load(checkpoint_path, map_location=cfg["device"])
     sae.load_state_dict(state_dict)
     sae = sae.to(cfg["device"])
 
@@ -115,8 +133,8 @@ def analyze_feature_usage(
 def visualize_feature_stats(stats_df: pd.DataFrame):
     """Create visualizations for feature statistics"""
     # Set style
-    plt.style.use("seaborn")
-    sns.set_palette("husl")
+    # # plt.style.use("seaborn")
+    # sns.set_palette("husl")
 
     # Create a figure with subplots
     fig, axes = plt.subplots(2, 2, figsize=(15, 12))
@@ -184,7 +202,7 @@ def analyze_decoder_weights(sae: GlobalBatchTopKMatryoshkaSAE):
             group_norms.append(weight_norms.cpu().numpy())
 
     # Create visualization
-    plt.style.use("seaborn")
+    # plt.style.use("seaborn")
     fig, ax = plt.subplots(figsize=(10, 6))
 
     # Plot distribution of weight norms for each group
