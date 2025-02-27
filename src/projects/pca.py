@@ -92,9 +92,9 @@ def load_matryoshka_sae(checkpoint_path: str) -> tuple[GlobalBatchTopKMatryoshka
 
     # Matryoshka-specific configurations
     cfg["sae_type"] = "global-matryoshka-topk"
-    cfg["dict_size"] = 768 * 64  # Total dictionary size
+    cfg["dict_size"] = 768 * 32  # Total dictionary size
     cfg["top_k"] = 32
-    cfg["group_sizes"] = [768, 768, 768 * 2, 768 * 4, 768 * 8, 768 * 16, 768 * 32]
+    cfg["group_sizes"] = [768, 768, 768 * 2, 768 * 4, 768 * 8, 768 * 16]
 
     # Update config with derived values
     cfg = post_init_cfg(cfg)

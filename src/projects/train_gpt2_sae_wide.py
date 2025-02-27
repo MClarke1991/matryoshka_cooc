@@ -16,13 +16,13 @@ def train_matryoshka_sae_gpt2_layer0():
 
     # Configuration for GPT2-small
     cfg["model_name"] = "gpt2-small"
-    cfg["layer"] = 0  # Target layer 0
+    cfg["layer"] = 8  # Target layer 0
     cfg["site"] = "resid_pre"  # Pre-residual activations
     cfg["dataset_path"] = "Skylion007/openwebtext"
     cfg["aux_penalty"] = 1 / 32
     cfg["lr"] = 3e-4
     cfg["input_unit_norm"] = False
-    cfg["wandb_project"] = "gpt2-small-matryoshka-layer0"
+    cfg["wandb_project"] = "gpt2-small-matryoshka-layer8"
     cfg["l1_coeff"] = 0.0
     cfg["act_size"] = 768  # GPT2-small's hidden size
 

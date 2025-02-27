@@ -50,9 +50,9 @@ def load_matryoshka_sae(checkpoint_path: str | None = None) -> tuple[GlobalBatch
 
     # Matryoshka-specific configurations
     cfg["sae_type"] = "global-matryoshka-topk"
-    cfg["dict_size"] = 768 * 64  # Total dictionary size
+    cfg["dict_size"] = 768 * 32  # Total dictionary size
     cfg["top_k"] = 32
-    cfg["group_sizes"] = [768, 768, 768 * 2, 768 * 4, 768 * 8, 768 * 16, 768 * 32]
+    cfg["group_sizes"] = [768, 768, 768 * 2, 768 * 4, 768 * 8, 768 * 16]
 
     # Update config with derived values
     cfg = post_init_cfg(cfg)
@@ -478,8 +478,8 @@ def save_config_info(output_dir: str, matryoshka_cfg: dict | None = None, resjb_
 
 def main() -> None:
     # Set parameters
-    output_dir = "cooccurrence_results"
-    n_batches = 50  # Number of batches to process
+    output_dir = "cooccurrence_results_layer_8"
+    n_batches = 500  # Number of batches to process
     activation_thresholds = [0.0, 1.5]  # Thresholds to try
     
     device = set_device()
@@ -496,7 +496,7 @@ def main() -> None:
     resjb_loaded = False
     
     # Try to load Matryoshka SAE
-    matryoshka_path = "checkpoints/gpt2-small_blocks.0.hook_resid_pre_49k_global-matryoshka-topk_32_0.0003_final.pt"
+    matryoshka_path = "checkpoints/gpt2-small_blocks.8.hook_resid_pre_24576_global-matryoshka-topk_32_0.0003_final.pt"
     try:
         matryoshka_sae, matryoshka_cfg = load_matryoshka_sae(matryoshka_path)
         matryoshka_loaded = True
@@ -514,8 +514,8 @@ def main() -> None:
         # Extract necessary information
         resjb_info = {
             "model_name": "gpt2-small",
-            "layer": 0,
-            "site": "blocks.0.hook_resid_pre", 
+            "layer": 8,
+            "site": "blocks.8.hook_resid_pre", 
             "dict_size": resjb_sae.cfg.d_sae,
             "release": "gpt2-small-res-jb",
         }
@@ -556,8 +556,8 @@ def main() -> None:
         # Set up configuration for activation store
         resjb_cfg = get_default_cfg()
         resjb_cfg["model_name"] = "gpt2-small"
-        resjb_cfg["layer"] = 0
-        resjb_cfg["site"] = "blocks.0.hook_resid_pre"
+        resjb_cfg["layer"] = 8
+        resjb_cfg["site"] = "blocks.8.hook_resid_pre"
         resjb_cfg["act_size"] = 768
         resjb_cfg["device"] = device
         resjb_cfg = post_init_cfg(resjb_cfg)
