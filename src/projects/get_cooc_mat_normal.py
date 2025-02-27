@@ -1,3 +1,4 @@
+import gc
 import os
 import pickle
 import time
@@ -292,6 +293,30 @@ def calculate_jaccard_matrix(
     return jaccard_matrix
 
 
+def clear_memory() -> None:
+    """Clear both CUDA and CPU memory"""
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    gc.collect()
+
+
+def get_memory_usage() -> dict[str, float]:
+    """Get current memory usage for both CPU and GPU"""
+    memory_stats = {
+        "cpu_percent": 0.0,  # Placeholder for CPU memory percentage
+        "gpu_memory_allocated": 0.0,
+        "gpu_memory_cached": 0.0,
+    }
+    
+    if torch.cuda.is_available():
+        memory_stats.update({
+            "gpu_memory_allocated": torch.cuda.memory_allocated() / 1024**3,  # GB
+            "gpu_memory_cached": torch.cuda.memory_reserved() / 1024**3,  # GB
+        })
+    
+    return memory_stats
+
+
 def generate_cooccurrence(
     sae: GlobalBatchTopKMatryoshkaSAE | SAE,
     activation_store: ActivationsStore | SaeLensStore,
@@ -320,6 +345,14 @@ def generate_cooccurrence(
     for threshold in activation_thresholds:
         print(f"\nComputing co-occurrence for {sae_name} with threshold {threshold}")
         
+        # Log initial memory state
+        initial_memory = get_memory_usage()
+        print(f"Initial memory state - GPU allocated: {initial_memory['gpu_memory_allocated']:.2f}GB, "
+              f"GPU cached: {initial_memory['gpu_memory_cached']:.2f}GB")
+        
+        # Clear memory before processing each threshold
+        clear_memory()
+        
         # Compute normalized co-occurrence matrix
         start_time = time.time()
         norm_cooccurrence, feature_activations = compute_normalized_cooccurrence_matrix(
@@ -341,21 +374,55 @@ def generate_cooccurrence(
             activation_threshold=threshold
         )
         
+        # Clear intermediate tensors
+        del norm_cooccurrence
+        del feature_activations
+        clear_memory()
+        
+        # Log memory state after co-occurrence
+        mid_memory = get_memory_usage()
+        print(f"Memory after co-occurrence - GPU allocated: {mid_memory['gpu_memory_allocated']:.2f}GB, "
+              f"GPU cached: {mid_memory['gpu_memory_cached']:.2f}GB")
+        
         # Compute and save Jaccard matrix if requested
         if compute_jaccard:
             print(f"Computing Jaccard similarity matrix for {sae_name} with threshold {threshold}")
+            
+            # Load saved co-occurrence data back from disk
+            threshold_str = str(threshold).replace(".", "_")
+            cooccurrence_file = os.path.join(output_dir, f"{sae_name}_cooccurrence_{threshold_str}.npz")
+            activations_file = os.path.join(output_dir, f"{sae_name}_activations_{threshold_str}.npz")
+            
+            # Load data
+            norm_cooccurrence = np.load(cooccurrence_file)['arr_0']
+            feature_activations = np.load(activations_file)['arr_0']
+            
+            # Convert to torch tensors
+            norm_cooccurrence = torch.from_numpy(norm_cooccurrence).to(sae.W_dec.device)
+            feature_activations = torch.from_numpy(feature_activations).to(sae.W_dec.device)
+            
             start_time = time.time()
             jaccard_matrix = calculate_jaccard_matrix(norm_cooccurrence, feature_activations)
             print(f"Jaccard computation time: {time.time() - start_time:.2f} seconds")
             
             # Save Jaccard matrix
-            threshold_str = str(threshold).replace(".", "_")
             jaccard_file = os.path.join(output_dir, f"{sae_name}_jaccard_{threshold_str}.npz")
             np.savez_compressed(jaccard_file, jaccard_matrix.cpu().numpy())
             print(f"Saved Jaccard matrix to {jaccard_file}")
             
-        # Clear GPU memory
-        torch.cuda.empty_cache() if torch.cuda.is_available() else None
+            # Clear Jaccard computation data
+            del jaccard_matrix
+            del norm_cooccurrence
+            del feature_activations
+            clear_memory()
+        
+        # Log final memory state for this threshold
+        final_memory = get_memory_usage()
+        print(f"Final memory state - GPU allocated: {final_memory['gpu_memory_allocated']:.2f}GB, "
+              f"GPU cached: {final_memory['gpu_memory_cached']:.2f}GB")
+        
+        # Force clear memory between thresholds
+        clear_memory()
 
 
 def save_config_info(output_dir: str, matryoshka_cfg: dict | None = None, resjb_info: dict | None = None) -> None:
@@ -369,7 +436,7 @@ def save_config_info(output_dir: str, matryoshka_cfg: dict | None = None, resjb_
     """
     os.makedirs(output_dir, exist_ok=True)
     
-    config_info = {
+    config_info: dict[str, Any] = {
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
         "device": set_device(),
     }
@@ -397,13 +464,13 @@ def save_config_info(output_dir: str, matryoshka_cfg: dict | None = None, resjb_
         f.write(f"Timestamp: {config_info['timestamp']}\n")
         f.write(f"Device: {config_info['device']}\n\n")
         
-        if matryoshka_cfg:
+        if "matryoshka" in config_info:
             f.write("=== Matryoshka SAE ===\n")
             for key, value in config_info["matryoshka"].items():
                 f.write(f"{key}: {value}\n")
             f.write("\n")
         
-        if resjb_info:
+        if "resjb" in config_info:
             f.write("=== Res-JB SAE ===\n")
             for key, value in config_info["resjb"].items():
                 f.write(f"{key}: {value}\n")
@@ -466,7 +533,11 @@ def main() -> None:
     # Process Matryoshka SAE if loaded
     if matryoshka_loaded:
         # Set up activation store
-        matryoshka_activation_store = create_activation_store(model, matryoshka_cfg, "matryoshka")
+        matryoshka_activation_store = create_activation_store(
+            model=model,  # type: ignore[arg-type] # HookedTransformer is a subclass of nn.Module
+            cfg=matryoshka_cfg,
+            sae_type="matryoshka"
+        )
         
         # Generate co-occurrence
         generate_cooccurrence(
@@ -492,7 +563,12 @@ def main() -> None:
         resjb_cfg = post_init_cfg(resjb_cfg)
         
         # Set up activation store
-        resjb_activation_store = create_activation_store(model, resjb_cfg, "resjb", resjb_sae)
+        resjb_activation_store = create_activation_store(
+            model=model,  # type: ignore[arg-type] # HookedTransformer is a subclass of nn.Module
+            cfg=resjb_cfg,
+            sae_type="resjb",
+            sae=resjb_sae
+        )
         
         # Generate co-occurrence
         generate_cooccurrence(
