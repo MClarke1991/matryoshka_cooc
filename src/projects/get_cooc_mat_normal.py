@@ -71,7 +71,7 @@ def load_matryoshka_sae(checkpoint_path: str | None = None) -> tuple[GlobalBatch
     return sae, cfg
 
 
-def load_resjb_sae() -> SAE:
+def load_resjb_sae(sae_id: str) -> SAE:
     """
     Load res-jb SAE for block 0 of GPT2-small
     
@@ -81,10 +81,10 @@ def load_resjb_sae() -> SAE:
     device = set_device()
 
     # Load res-jb SAE using sae_lens
-    print("Loading res-jb SAE for block 0...")
+    print(f"Loading res-jb SAE for {sae_id}...")
     sae, _, _ = SAE.from_pretrained(
         release="gpt2-small-res-jb", 
-        sae_id="blocks.0.hook_resid_pre", 
+        sae_id=sae_id, 
         device=device
     )
 
@@ -507,7 +507,7 @@ def main() -> None:
     
     # Try to load res-jb SAE
     try:
-        resjb_sae = load_resjb_sae()
+        resjb_sae = load_resjb_sae(sae_id="blocks.8.hook_resid_pre")
         resjb_loaded = True
         print("Successfully loaded res-jb SAE")
         

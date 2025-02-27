@@ -412,8 +412,8 @@ def process_sae_cooccurrence(
 def main() -> None:
     """Main function to process co-occurrence data and generate graphs"""
     # Configuration
-    input_dir = "cooccurrence_results"  # Directory containing co-occurrence matrices
-    output_dir = "graph_results"  # Directory for output
+    input_dir = "cooccurrence_results_layer_8"  # Directory containing co-occurrence matrices
+    output_dir = "graph_results_layer_8"  # Directory for output
     activation_thresholds = [0.0, 1.5]  # Thresholds to process
     min_subgraph_size = 150
     max_subgraph_size = 200
