@@ -40,7 +40,7 @@ def train_matryoshka_sae_gpt2_layer0():
     cfg["dict_size"] = 768 * 32  # Total dictionary size
     cfg["top_k"] = 32
     cfg["bandwidth"] = 0.001
-    cfg["group_sizes"] = [768, 768, 768 * 2, 768 * 4]
+    cfg["group_sizes"] = [768, 768, 768 * 2, 768 * 4, 768 * 8, 768 * 16]
 
     cfg["num_tokens"] = 1e8  # Number of tokens to train on
     cfg["model_batch_size"] = 32

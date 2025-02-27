@@ -38,7 +38,7 @@ def load_matryoshka_sae(
                 "top_k": 32,
                 "lr": 3e-4,
                 "seed": 42,
-                "dtype": torch.float32,
+                # "dtype": torch.float32,
                 "dataset_path": "Skylion007/openwebtext",
                 "model_batch_size": 32,
                 "batch_size": 512,
