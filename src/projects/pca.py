@@ -261,7 +261,7 @@ class ProcessedExamples:
         all_graph_feature_acts,
         all_examples_found,
         all_max_feature_info,
-        all_feature_acts,
+        # all_feature_acts,
         top_3_tokens=None,
         example_context="",
     ):
@@ -269,7 +269,7 @@ class ProcessedExamples:
         self.all_fired_tokens = all_fired_tokens
         self.all_reconstructions = all_reconstructions
         self.all_graph_feature_acts = all_graph_feature_acts
-        self.all_feature_acts = all_feature_acts
+        # self.all_feature_acts = all_feature_acts
         self.all_max_feature_info = all_max_feature_info
         self.all_examples_found = all_examples_found
         self.top_3_tokens = top_3_tokens if top_3_tokens is not None else []
@@ -284,7 +284,7 @@ def process_examples(
     n_batches_reconstruction,
     remove_special_tokens=False,
     device="cpu",
-    max_examples=5_000_000,
+    max_examples=500,
 ):
     """
     Process examples from the activation store using the given model and SAE
@@ -293,7 +293,7 @@ def process_examples(
     all_fired_tokens = []
     all_graph_feature_acts = []
     all_max_feature_info = []
-    all_feature_acts = []
+    # all_feature_acts = []
     all_reconstructions = []
     all_token_dfs = []
 
@@ -354,7 +354,7 @@ def process_examples(
         all_graph_feature_acts.append(feature_acts[fired_mask][:, feature_list])
 
         # Append all feature activations for fired tokens
-        all_feature_acts.append(feature_acts[fired_mask])
+        # all_feature_acts.append(feature_acts[fired_mask]) 
 
         # Append maximum feature information for fired tokens
         all_max_feature_info.append(max_feature_info)
@@ -378,7 +378,7 @@ def process_examples(
     all_fired_tokens = list_flatten(all_fired_tokens)
     all_reconstructions = torch.cat(all_reconstructions) if all_reconstructions else torch.tensor([])
     all_graph_feature_acts = torch.cat(all_graph_feature_acts) if all_graph_feature_acts else torch.tensor([])
-    all_feature_acts = torch.cat(all_feature_acts) if all_feature_acts else torch.tensor([])
+    # all_feature_acts = torch.cat(all_feature_acts) if all_feature_acts else torch.tensor([]) 
     all_max_feature_info = torch.cat(all_max_feature_info) if all_max_feature_info else torch.tensor([])
 
     top_3_tokens, example_context = get_top_tokens_and_context(
@@ -392,7 +392,7 @@ def process_examples(
         all_graph_feature_acts=all_graph_feature_acts,
         all_examples_found=examples_found,
         all_max_feature_info=all_max_feature_info,
-        all_feature_acts=all_feature_acts,
+        # all_feature_acts=all_feature_acts,
         top_3_tokens=top_3_tokens,
         example_context=example_context,
     )
@@ -407,7 +407,7 @@ def perform_pca_on_results(
     Perform PCA on the reconstructions from ProcessedExamples and return a DataFrame with the results.
     """
     # Get dimensions of the data
-    n_samples, n_features = results.all_reconstructions.cpu().numpy().shape
+    n_samples, n_features = results.all_reconstructions.detach().cpu().numpy().shape
     max_components = min(n_samples, n_features)
 
     if n_components > max_components:
@@ -963,6 +963,7 @@ def analyze_features_with_pca(results_dir, sae_path, output_dir):
 
 def main():
     """Main function to run the script."""
+    torch.set_grad_enabled(False)
     parser = argparse.ArgumentParser(description="Generate PCA visualizations for a Matryoshka SAE model")
     parser.add_argument("--sae_path", type=str, required=True, help="Path to the SAE checkpoint")
     parser.add_argument("--cooc_dir", type=str, required=True, help="Directory containing co-occurrence data")
