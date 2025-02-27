@@ -238,9 +238,9 @@ def load_matryoshka_sae(checkpoint_path: str | None = None) -> tuple[GlobalBatch
 
     # Matryoshka-specific configurations
     cfg["sae_type"] = "global-matryoshka-topk"
-    cfg["dict_size"] = 768 * 8
+    cfg["dict_size"] = 768 * 32
     cfg["top_k"] = 32
-    cfg["group_sizes"] = [768, 768, 768 * 2, 768 * 4]
+    cfg["group_sizes"] = [768, 768, 768 * 2, 768 * 4, 768 * 8, 768 * 16, 768 * 32]
 
     # Update config with derived values
     cfg = post_init_cfg(cfg)
@@ -307,7 +307,7 @@ def main():
     model = HookedTransformer.from_pretrained("gpt2-small").to(device)
 
     # Load SAEs
-    matryoshka_path = "checkpoints/gpt2-small_blocks.0.hook_resid_pre_6144_global-matryoshka-topk_32_0.0003_final.pt"
+    matryoshka_path = "checkpoints/gpt2-small_blocks.0.hook_resid_pre_24576_global-matryoshka-topk_32_0.0003_final.pt"
 
     # Try to load trained matryoshka SAE, if not available, use randomly initialized
     try:
@@ -384,11 +384,13 @@ def main():
     matryoshka_feature_indices = list(matryoshka_day_top_features.values())
     matryoshka_feature_labels = list(matryoshka_day_top_features.keys())
 
+    n_activation_store_batches = 500
+
     matryoshka_cooccurrence = compute_feature_cooccurrence(
         matryoshka_sae,
         matryoshka_activation_store,
         matryoshka_feature_indices,
-        n_batches=50,
+        n_batches=n_activation_store_batches,
         is_matryoshka=True,
     )
 
@@ -401,7 +403,7 @@ def main():
             resjb_sae,
             resjb_activation_store,
             resjb_feature_indices,
-            n_batches=50,
+            n_batches=n_activation_store_batches,
             is_matryoshka=False,
         )
 
