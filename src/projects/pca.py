@@ -151,7 +151,7 @@ def list_flatten(nested_list):
     return [x for y in nested_list for x in y]
 
 
-def make_token_df(tokens, model, len_prefix=5, len_suffix=5):
+def make_token_df(tokens, model, len_prefix=10, len_suffix=10):
     """Create a DataFrame containing token information and context for each token in the input."""
     str_tokens = [model.to_str_tokens(t) for t in tokens]
     unique_token = [
@@ -280,7 +280,7 @@ def process_examples(
     sae,
     feature_list,
     n_batches_reconstruction,
-    remove_special_tokens=False,
+    remove_special_tokens=True,
     device="cpu",
     max_examples=500,
     layer: int = 8,
@@ -298,7 +298,7 @@ def process_examples(
 
     feature_list_tensor = torch.tensor(feature_list, device=sae.W_dec.device)
 
-    pbar = tqdm(range(n_batches_reconstruction), leave=False)
+    pbar = tqdm(range(n_batches_reconstruction), leave=True)
     for _ in pbar:
         # Get a batch of tokens from the activation store
         tokens = activation_store.get_batch_tokens()
