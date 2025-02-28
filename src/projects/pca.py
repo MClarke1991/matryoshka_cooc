@@ -69,7 +69,7 @@ def create_directories(base_path: str) -> dict[str, str]:
     return paths
 
 
-def load_matryoshka_sae(checkpoint_path: str) -> tuple[GlobalBatchTopKMatryoshkaSAE, dict[str, Any]]:
+def load_matryoshka_sae(checkpoint_path: str, layer: int) -> tuple[GlobalBatchTopKMatryoshkaSAE, dict[str, Any]]:
     """
     Load a trained matryoshka SAE model
     
@@ -85,7 +85,7 @@ def load_matryoshka_sae(checkpoint_path: str) -> tuple[GlobalBatchTopKMatryoshka
     # Configuration for GPT2-small
     cfg = get_default_cfg()
     cfg["model_name"] = "gpt2-small"
-    cfg["layer"] = 0
+    cfg["layer"] = layer
     cfg["site"] = "resid_pre"
     cfg["act_size"] = 768
     cfg["device"] = device
@@ -198,12 +198,10 @@ def get_special_tokens(model):
     return special_tokens
 
 
-def run_model_with_cache(model, tokens, sae):
+def run_model_with_cache(model, tokens, sae, layer: int):
     """Run the model with caching and return the cached activations for the SAE hook."""
     # For matryoshka SAE, the hook point is in the config
     hook_point = sae.config["hook_point"]
-    layer = sae.config.get("layer", 0)
-    
     _, cache = model.run_with_cache(
         tokens,
         stop_at_layer=layer + 1,
@@ -285,6 +283,7 @@ def process_examples(
     remove_special_tokens=False,
     device="cpu",
     max_examples=500,
+    layer: int = 8,
 ):
     """
     Process examples from the activation store using the given model and SAE
@@ -311,7 +310,7 @@ def process_examples(
         flat_tokens = tokens.flatten()
 
         # Run the model and get activations
-        sae_in = run_model_with_cache(model, tokens, sae)
+        sae_in = run_model_with_cache(model, tokens, sae, layer)
         # Encode the activations using the SAE
         feature_acts = sae.encode(sae_in).squeeze()
         # Flatten the feature activations to 2D
@@ -456,7 +455,8 @@ def generate_data(
     decoder=False,
     remove_special_tokens=False,
     device="cpu",
-    max_examples=5_000_000,
+    max_examples=500,
+    layer: int = 8,
 ):
     """Generate PCA data for a set of features."""
     results = process_examples(
@@ -468,6 +468,7 @@ def generate_data(
         remove_special_tokens,
         device=device,
         max_examples=max_examples,
+        layer=layer,
     )
     
     pca_df, pca = perform_pca_on_results(results, n_components=3)
@@ -678,7 +679,8 @@ def analyze_subgraph(
     show_plots: bool = True,
     save_data: bool = True,
     remove_special_tokens: bool = True,
-    max_examples: int = 10000,
+    max_examples: int = 500,
+    layer: int = 8,
 ):
     """
     Analyze a specific subgraph with PCA
@@ -706,7 +708,7 @@ def analyze_subgraph(
     logging.info(f"Analyzing subgraph {subgraph_id} with activation threshold {activation_threshold}")
     
     # Load SAE model
-    sae, cfg = load_matryoshka_sae(sae_path)
+    sae, cfg = load_matryoshka_sae(sae_path, layer)
     
     # Load model
     model_name = cfg["model_name"]
@@ -755,6 +757,7 @@ def analyze_subgraph(
             remove_special_tokens=remove_special_tokens,
             device=device,
             max_examples=max_examples,
+            layer=layer,
         )
         
         if save_data:
@@ -901,7 +904,7 @@ def plot_3d_pca(pca_df, subgraph_id, color_by="token", show=True, save_path=None
     return fig
 
 
-def analyze_features_with_pca(results_dir, sae_path, output_dir):
+def analyze_features_with_pca(results_dir, sae_path, output_dir, layer: int):
     """Analyze all significant subgraphs with PCA."""
     # Set device
     device = set_device()
@@ -913,7 +916,7 @@ def analyze_features_with_pca(results_dir, sae_path, output_dir):
     setup_logging(pj(output_dir, "full_analysis.log"))
     
     # Load SAE
-    sae, cfg = load_matryoshka_sae(sae_path)
+    sae, cfg = load_matryoshka_sae(sae_path, layer)
     
     # Load node information to find important subgraphs
     activation_threshold = 1.5
@@ -953,7 +956,7 @@ def analyze_features_with_pca(results_dir, sae_path, output_dir):
                 show_plots=False,  # Don't show plots in batch mode
                 save_data=True,
                 remove_special_tokens=True,
-                max_examples=5000,  # Reduced for full analysis
+                max_examples=500,  # Reduced for full analysis
             )
         except Exception as e:
             logging.error(f"Error analyzing subgraph {subgraph_id}: {str(e)}")
@@ -966,6 +969,7 @@ def main():
     torch.set_grad_enabled(False)
     parser = argparse.ArgumentParser(description="Generate PCA visualizations for a Matryoshka SAE model")
     parser.add_argument("--sae_path", type=str, required=True, help="Path to the SAE checkpoint")
+    parser.add_argument("--layer", type=int, default=8, help="Layer to analyze")
     parser.add_argument("--cooc_dir", type=str, required=True, help="Directory containing co-occurrence data")
     parser.add_argument("--output_dir", type=str, default="./matryoshka_pca_results", help="Directory to save results")
     parser.add_argument("--subgraph_id", type=int, help="ID of the subgraph to analyze (if not specified, will analyze all significant subgraphs)")
@@ -994,6 +998,7 @@ def main():
             save_data=not args.no_save_data,
             remove_special_tokens=not args.include_special_tokens,
             max_examples=args.max_examples,
+            layer=args.layer,
         )
     else:
         # Analyze all significant subgraphs
@@ -1001,6 +1006,7 @@ def main():
             results_dir=args.cooc_dir,
             sae_path=args.sae_path,
             output_dir=args.output_dir,
+            layer=args.layer,
         )
 
 
