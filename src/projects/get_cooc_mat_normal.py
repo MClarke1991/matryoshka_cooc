@@ -478,9 +478,10 @@ def save_config_info(output_dir: str, matryoshka_cfg: dict | None = None, resjb_
 
 def main() -> None:
     # Set parameters
-    output_dir = "cooccurrence_results_layer_8"
-    n_batches = 500  # Number of batches to process
+    output_dir = "test_settings"
+    n_batches = 50  # Number of batches to process
     activation_thresholds = [0.0, 1.5]  # Thresholds to try
+    layer = 8
     
     device = set_device()
     print(f"Using device: {device}")
@@ -496,7 +497,7 @@ def main() -> None:
     resjb_loaded = False
     
     # Try to load Matryoshka SAE
-    matryoshka_path = "checkpoints/gpt2-small_blocks.8.hook_resid_pre_24576_global-matryoshka-topk_32_0.0003_final.pt"
+    matryoshka_path = f"checkpoints/gpt2-small_blocks.{layer}.hook_resid_pre_24576_global-matryoshka-topk_32_0.0003_final.pt"
     try:
         matryoshka_sae, matryoshka_cfg = load_matryoshka_sae(matryoshka_path)
         matryoshka_loaded = True
@@ -507,15 +508,15 @@ def main() -> None:
     
     # Try to load res-jb SAE
     try:
-        resjb_sae = load_resjb_sae(sae_id="blocks.8.hook_resid_pre")
+        resjb_sae = load_resjb_sae(sae_id=f"blocks.{layer}.hook_resid_pre")
         resjb_loaded = True
         print("Successfully loaded res-jb SAE")
         
         # Extract necessary information
         resjb_info = {
             "model_name": "gpt2-small",
-            "layer": 8,
-            "site": "blocks.8.hook_resid_pre", 
+            "layer": layer,
+            "site": f"blocks.{layer}.hook_resid_pre", 
             "dict_size": resjb_sae.cfg.d_sae,
             "release": "gpt2-small-res-jb",
         }
@@ -556,8 +557,8 @@ def main() -> None:
         # Set up configuration for activation store
         resjb_cfg = get_default_cfg()
         resjb_cfg["model_name"] = "gpt2-small"
-        resjb_cfg["layer"] = 8
-        resjb_cfg["site"] = "blocks.8.hook_resid_pre"
+        resjb_cfg["layer"] = layer
+        resjb_cfg["site"] = f"blocks.{layer}.hook_resid_pre"
         resjb_cfg["act_size"] = 768
         resjb_cfg["device"] = device
         resjb_cfg = post_init_cfg(resjb_cfg)
