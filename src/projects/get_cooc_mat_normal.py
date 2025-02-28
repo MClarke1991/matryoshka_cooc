@@ -13,7 +13,7 @@ from sae_lens import ActivationsStore as SaeLensStore
 from tqdm.autonotebook import tqdm
 from transformer_lens import HookedTransformer
 
-from matryoshka_cooc.activation_store import ActivationsStore
+from matryoshka_cooc.activations_store_v3 import ActivationsStore
 from matryoshka_cooc.config import get_default_cfg, post_init_cfg
 from matryoshka_cooc.sae import GlobalBatchTopKMatryoshkaSAE
 
@@ -28,7 +28,137 @@ def set_device() -> str:
         return "cpu"
 
 
-def load_matryoshka_sae(checkpoint_path: str | None = None) -> tuple[GlobalBatchTopKMatryoshkaSAE, dict[str, Any]]:
+def get_special_tokens(model: HookedTransformer) -> set[int | None]:
+    """Get set of special token IDs from model tokenizer"""
+    if model.tokenizer is None:
+        raise ValueError("Model tokenizer is None")
+    special_tokens = {
+        model.tokenizer.bos_token_id,  # type: ignore[arg-type]
+        model.tokenizer.eos_token_id,  # type: ignore[arg-type]
+        model.tokenizer.pad_token_id,  # type: ignore[arg-type]
+    }
+    return special_tokens  # type: ignore[return-value]
+
+
+def get_batch_without_special_token_activations_sae_lens(
+    activations_store: SaeLensStore,
+    special_tokens: set[int | None],
+    device: str,
+) -> torch.Tensor:
+    """
+    Get a batch of activations from the SaeLensStore, removing special tokens.
+
+    Args:
+        activations_store: An instance of the SaeLensStore class
+        special_tokens: Set of token IDs to be considered special tokens
+        device: Device to use for tensor operations
+
+    Returns:
+        torch.Tensor: A tensor of activations with special tokens removed
+    """
+    # Get a batch of tokens
+    batch_tokens = activations_store.get_batch_tokens().to(device)
+
+    # Get activations for these tokens
+    with torch.no_grad():
+        activations = activations_store.get_activations(batch_tokens).to(device)
+
+    # Create mask for non-special tokens
+    non_special_mask = ~torch.isin(
+        batch_tokens, torch.tensor(list(special_tokens), device=device)
+    )
+
+    # Remove special token activations
+    activations = activations[non_special_mask]
+
+    # Reshape to match the output of next_batch()
+    activations = activations.reshape(-1, 1, activations.shape[-1])
+
+    # If there's any normalization applied in the original next_batch(), apply it here
+    if activations_store.normalize_activations == "expected_average_only_in":
+        activations = activations_store.apply_norm_scaling_factor(activations)
+
+    # Get the correct batch size
+    train_batch_size = activations_store.train_batch_size_tokens
+
+    # Return only the required number of activations
+    return activations[:train_batch_size]
+
+
+def get_batch_without_special_token_activations_matryoshka(
+    activation_store: ActivationsStore,
+    special_tokens: set[int | None],
+    device: str,
+) -> torch.Tensor:
+    """
+    Get a batch of activations from the Matryoshka ActivationsStore, removing special tokens.
+
+    This implementation works with the Matryoshka-specific ActivationsStore class.
+
+    Args:
+        activation_store: An instance of the ActivationsStore class for Matryoshka SAE
+        special_tokens: Set of token IDs to be considered special tokens
+        device: Device to use for tensor operations
+
+    Returns:
+        torch.Tensor: A tensor of activations with special tokens removed
+    """
+    # Get a batch of tokens
+    batch_tokens = activation_store.get_batch_tokens()
+    
+    # Get activations for these tokens
+    activations = activation_store.get_activations(batch_tokens)
+    
+    # Create mask for non-special tokens
+    non_special_mask = ~torch.isin(
+        batch_tokens, torch.tensor(list(special_tokens), device=device)
+    )
+    
+    # Get the dimensions
+    n_batches, n_context, d_in = activations.shape
+    
+    # Flatten the activations and mask
+    activations_flat = activations.reshape(-1, d_in)
+    mask_flat = non_special_mask.reshape(-1)
+    
+    # Filter out activations for special tokens
+    filtered_activations = activations_flat[mask_flat]
+    
+    # Make sure we have enough tokens
+    if filtered_activations.shape[0] < activation_store.train_batch_size_tokens:
+        print(f"Warning: Only {filtered_activations.shape[0]} non-special tokens found, " 
+              f"which is less than the requested {activation_store.train_batch_size_tokens}. "
+              f"Getting additional data...")
+        
+        # Get more batches until we have enough activations
+        while filtered_activations.shape[0] < activation_store.train_batch_size_tokens:
+            # Get more tokens and activations
+            extra_tokens = activation_store.get_batch_tokens()
+            extra_activations = activation_store.get_activations(extra_tokens)
+            
+            # Create mask and filter
+            extra_mask = ~torch.isin(
+                extra_tokens, 
+                torch.tensor(list(special_tokens), device=device)
+            )
+            
+            # Reshape and filter
+            extra_acts_flat = extra_activations.reshape(-1, d_in)
+            extra_mask_flat = extra_mask.reshape(-1)
+            extra_filtered = extra_acts_flat[extra_mask_flat]
+            
+            # Combine
+            filtered_activations = torch.cat([filtered_activations, extra_filtered], dim=0)
+    
+    # If we have more than needed, select a random subset
+    if filtered_activations.shape[0] > activation_store.train_batch_size_tokens:
+        indices = torch.randperm(filtered_activations.shape[0])[:activation_store.train_batch_size_tokens]
+        filtered_activations = filtered_activations[indices]
+    
+    return filtered_activations
+
+
+def load_matryoshka_sae(layer: int, checkpoint_path: str | None = None) -> tuple[GlobalBatchTopKMatryoshkaSAE, dict[str, Any]]:
     """
     Load a trained matryoshka SAE model or initialize a new one with the specified configuration
     
@@ -43,7 +173,7 @@ def load_matryoshka_sae(checkpoint_path: str | None = None) -> tuple[GlobalBatch
     # Configuration for GPT2-small
     cfg = get_default_cfg()
     cfg["model_name"] = "gpt2-small"
-    cfg["layer"] = 0
+    cfg["layer"] = layer
     cfg["site"] = "resid_pre"
     cfg["act_size"] = 768
     cfg["device"] = device
@@ -91,7 +221,12 @@ def load_resjb_sae(sae_id: str) -> SAE:
     return sae
 
 
-def create_activation_store(model: HookedTransformer, cfg: dict, sae_type: str = "matryoshka", sae: SAE | None = None) -> ActivationsStore | SaeLensStore:
+def create_activation_store(
+    model: HookedTransformer, 
+    cfg: dict, 
+    sae_type: str = "matryoshka", 
+    sae: SAE | None = None
+) -> ActivationsStore | SaeLensStore:
     """
     Create appropriate activation store based on SAE type
 
@@ -105,6 +240,7 @@ def create_activation_store(model: HookedTransformer, cfg: dict, sae_type: str =
         Activation store instance
     """
     if sae_type == "matryoshka":
+        cfg['batch_size'] = 4096
         return ActivationsStore(model, cfg)
     else:
         # For res-jb SAE, use the sae_lens activation store
@@ -120,6 +256,41 @@ def create_activation_store(model: HookedTransformer, cfg: dict, sae_type: str =
         )
 
 
+def get_activations_batch(
+    activation_store: ActivationsStore | SaeLensStore,
+    device: str,
+    remove_special_tokens_acts: bool = False,
+    special_tokens: set[int | None] | None = None,
+) -> torch.Tensor:
+    """
+    Get activations batch with optional special token removal
+    
+    Args:
+        activation_store: Store to get batches of activations
+        device: Device to use for tensor operations
+        remove_special_tokens_acts: Whether to remove special token activations
+        special_tokens: Set of token IDs to be considered special tokens
+    
+    Returns:
+        torch.Tensor: Batch of activations
+    """
+    if not remove_special_tokens_acts:
+        return activation_store.next_batch().to(device)
+    
+    if special_tokens is None:
+        raise ValueError("special_tokens must be provided when remove_special_tokens_acts is True")
+    
+    # Handle different activation store types
+    if isinstance(activation_store, SaeLensStore):
+        return get_batch_without_special_token_activations_sae_lens(
+            activation_store, special_tokens, device
+        )
+    else:
+        return get_batch_without_special_token_activations_matryoshka(
+            activation_store, special_tokens, device
+        )
+
+
 def compute_normalized_cooccurrence_matrix(
     sae: GlobalBatchTopKMatryoshkaSAE | SAE,
     activation_store: ActivationsStore | SaeLensStore,
@@ -128,6 +299,8 @@ def compute_normalized_cooccurrence_matrix(
     n_batches: int = 100,
     batch_size: int = 1000,
     is_matryoshka: bool = False,
+    remove_special_tokens_acts: bool = False,
+    special_tokens: set[int | None] | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Compute normalized co-occurrence matrix for all features
@@ -140,6 +313,8 @@ def compute_normalized_cooccurrence_matrix(
         n_batches: Number of batches to process
         batch_size: Size of mini-batches for processing large matrices
         is_matryoshka: Whether the SAE is a matryoshka model
+        remove_special_tokens_acts: Whether to remove special token activations
+        special_tokens: Set of token IDs to be considered special tokens
         
     Returns:
         Tuple of (co-occurrence matrix, feature activations)
@@ -152,15 +327,21 @@ def compute_normalized_cooccurrence_matrix(
     
     print(f"Computing co-occurrence matrix for SAE with {dict_size} features")
     print(f"Using device: {device}, threshold: {activation_threshold}")
+    print(f"Removing special tokens: {remove_special_tokens_acts}")
     
     # Process batches
     for batch_idx in tqdm(range(n_batches), desc="Processing batches"):
         # Get batch of activations
-        batch = activation_store.next_batch().to(device)
+        activations_batch = get_activations_batch(
+            activation_store, 
+            device,
+            remove_special_tokens_acts, 
+            special_tokens
+        )
         
         # Encode with SAE
         with torch.no_grad():
-            feature_acts = sae.encode(batch)
+            feature_acts = sae.encode(activations_batch)
             
             # Flatten batch dimension if needed
             if len(feature_acts.shape) > 2:
@@ -327,6 +508,8 @@ def generate_cooccurrence(
     n_batches: int = 100,
     compute_jaccard: bool = True,
     is_matryoshka: bool = False,
+    remove_special_tokens: bool = False,
+    special_tokens: set[int | None] | None = None,
 ) -> None:
     """
     Generate and save co-occurrence and jaccard matrices for all specified thresholds
@@ -361,7 +544,9 @@ def generate_cooccurrence(
             dict_size=dict_size,
             activation_threshold=threshold,
             n_batches=n_batches,
-            is_matryoshka=is_matryoshka
+            is_matryoshka=is_matryoshka,
+            remove_special_tokens_acts=remove_special_tokens,
+            special_tokens=special_tokens
         )
         print(f"Co-occurrence computation time: {time.time() - start_time:.2f} seconds")
         
@@ -478,15 +663,19 @@ def save_config_info(output_dir: str, matryoshka_cfg: dict | None = None, resjb_
 
 def main() -> None:
     # Set parameters
-    output_dir = "cooccurrence_results_layer_8"
-    n_batches = 500  # Number of batches to process
-    activation_thresholds = [0.0, 1.5]  # Thresholds to try
+    n_batches = 50  # Number of batches to process
+    activation_thresholds = [10.0]  # Thresholds to try
+    layer = 8
+    remove_special_tokens = True
+    output_dir = f"cooc_n_batches_{n_batches}_layer_{layer}"
     
     device = set_device()
     print(f"Using device: {device}")
     
     # Load model
     model = HookedTransformer.from_pretrained("gpt2-small").to(device)
+    special_tokens = get_special_tokens(model)
+    # print("Special Tokens:", [model.tokenizer.decode(token) for token in special_tokens])
     
     # Create output directory
     os.makedirs(output_dir, exist_ok=True)
@@ -496,9 +685,9 @@ def main() -> None:
     resjb_loaded = False
     
     # Try to load Matryoshka SAE
-    matryoshka_path = "checkpoints/gpt2-small_blocks.8.hook_resid_pre_24576_global-matryoshka-topk_32_0.0003_final.pt"
+    matryoshka_path = f"checkpoints/gpt2-small_blocks.{layer}.hook_resid_pre_24576_global-matryoshka-topk_32_0.0003_final.pt"
     try:
-        matryoshka_sae, matryoshka_cfg = load_matryoshka_sae(matryoshka_path)
+        matryoshka_sae, matryoshka_cfg = load_matryoshka_sae(layer=layer, checkpoint_path=matryoshka_path)
         matryoshka_loaded = True
         print("Successfully loaded Matryoshka SAE")
     except FileNotFoundError:
@@ -507,15 +696,15 @@ def main() -> None:
     
     # Try to load res-jb SAE
     try:
-        resjb_sae = load_resjb_sae(sae_id="blocks.8.hook_resid_pre")
+        resjb_sae = load_resjb_sae(sae_id=f"blocks.{layer}.hook_resid_pre")
         resjb_loaded = True
         print("Successfully loaded res-jb SAE")
         
         # Extract necessary information
         resjb_info = {
             "model_name": "gpt2-small",
-            "layer": 8,
-            "site": "blocks.8.hook_resid_pre", 
+            "layer": layer,
+            "site": f"blocks.{layer}.hook_resid_pre", 
             "dict_size": resjb_sae.cfg.d_sae,
             "release": "gpt2-small-res-jb",
         }
@@ -548,7 +737,9 @@ def main() -> None:
             sae_name="matryoshka",
             activation_thresholds=activation_thresholds,
             n_batches=n_batches,
-            is_matryoshka=True
+            is_matryoshka=True,
+            remove_special_tokens=remove_special_tokens,
+            special_tokens=special_tokens
         )
     
     # Process res-jb SAE if loaded
@@ -556,8 +747,8 @@ def main() -> None:
         # Set up configuration for activation store
         resjb_cfg = get_default_cfg()
         resjb_cfg["model_name"] = "gpt2-small"
-        resjb_cfg["layer"] = 8
-        resjb_cfg["site"] = "blocks.8.hook_resid_pre"
+        resjb_cfg["layer"] = layer
+        resjb_cfg["site"] = f"blocks.{layer}.hook_resid_pre"
         resjb_cfg["act_size"] = 768
         resjb_cfg["device"] = device
         resjb_cfg = post_init_cfg(resjb_cfg)
@@ -579,7 +770,9 @@ def main() -> None:
             sae_name="resjb",
             activation_thresholds=activation_thresholds,
             n_batches=n_batches,
-            is_matryoshka=False
+            is_matryoshka=False,
+            remove_special_tokens=remove_special_tokens,
+            special_tokens=special_tokens
         )
     
     print("Co-occurrence generation complete!")

@@ -63,7 +63,7 @@ def load_matryoshka_sae(checkpoint_path: str) -> tuple[GlobalBatchTopKMatryoshka
 def find_most_activating_tokens(
     model: HookedTransformer,
     sae: GlobalBatchTopKMatryoshkaSAE,
-    batch_size: int = 512,
+    batch_size: int = 4096*10,
     activation_threshold: float = 0.0,
 ) -> dict:
     """
@@ -97,8 +97,7 @@ def find_most_activating_tokens(
         # Get token embeddings
         with torch.no_grad():
             # Forward pass through embedding layer
-            token_embeddings = model.embed.wte(batch_token_ids)
-            
+            token_embeddings = model.W_E[batch_token_ids]            
             # Encode with SAE
             feature_activations = sae.encode(token_embeddings)
             
@@ -147,8 +146,9 @@ def save_results_to_csv(results: dict, output_file: str) -> None:
 
 def main() -> None:
     # Configuration
-    checkpoint_path = "checkpoints/gpt2-small_blocks.8.hook_resid_pre_24576_global-matryoshka-topk_32_0.0003_final.pt"
-    output_file = "sae_most_activating_tokens.csv"
+    layer = 0
+    checkpoint_path = f"checkpoints/gpt2-small_blocks.{layer}.hook_resid_pre_24576_global-matryoshka-topk_32_0.0003_final.pt"
+    output_file = f"sae_most_activating_tokens_layer_{layer}.csv"
     activation_threshold = 1.5  # Minimum activation value to include in results
     
     # Create output directory if needed
