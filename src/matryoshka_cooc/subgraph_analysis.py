@@ -994,108 +994,39 @@ def analyze_features_with_pca(results_dir, sae_path, output_dir, layer: int):
     
     logging.info("Full analysis completed")
     
-def plot_pca_single_feature_strength(
-    pca_df,
-    results,
-    feature_index,
-    fs_splitting_cluster,
-    pca_path,
-    pc_x="PC1",
-    pc_y="PC2",
-    save=False,
-):
-    # Create a single plot
-    fig = go.Figure()
 
-    # Get activations for all features
-    all_activations = results.all_feature_acts.cpu().numpy()
+def process_token_df(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Process the token DataFrame by:
+    1. Filtering out cases where token is 'last' or 'next'
+    2. Adding a time_mod column based on context analysis
+    
+    Args:
+        df: Input DataFrame with token and context information
+        
+    Returns:
+        Processed DataFrame
+    """
+    # Filter out 'last' and 'next' tokens
+    filtered_df = df[~df['str_tokens'].isin(['last', 'next'])]
+    
+    # Extract the word after the token from context
+    def get_next_word(context: str) -> str | None:
+        # Split context by the token marker '|'
+        parts = context.split('|')
+        if len(parts) >= 3:  # Ensure we have suffix part
+            # Get first word after token
+            suffix_words = parts[2].strip().split()
+            if suffix_words:  # If there are any words after token
+                return suffix_words[0]
+        return None
+    
+    # Add next_word column
+    filtered_df['next_word'] = filtered_df['context'].map(get_next_word)
+    
+    # Add time_mod column
+    time_words = ['week', 'month', 'year']
+    filtered_df['time_mod'] = filtered_df['next_word'].isin(time_words)
+    
+    return filtered_df
 
-    # Get activations for this feature
-    feature_activations = all_activations[:, feature_index]
-
-    # Prepare the color map
-    cmap = plt.get_cmap("viridis")
-    n_colors = 256
-
-    # Get the colormap in RGB
-    colormap_RGB = cmap(np.arange(cmap.N))
-
-    # Set the color for zero values to be white
-    colormap_RGB[0] = (
-        1,
-        1,
-        1,
-        1,
-    )  # This line sets the first color in the colormap to white
-
-    # Prepare custom color scale (in Plotly format)
-    colorscale = [
-        [i / (n_colors - 1), mcolors.rgb2hex(colormap_RGB[i])] for i in range(n_colors)
-    ]
-
-    # Create scatter trace
-    scatter = go.Scatter(
-        x=pca_df[pc_x],
-        y=pca_df[pc_y],
-        mode="markers",
-        marker=dict(
-            size=10,
-            color=feature_activations,
-            colorscale=colorscale,
-            colorbar=dict(title=f"Feature {feature_index} Activation"),
-            line=dict(width=1, color="DarkSlateGrey"),
-            cmin=0,  # Set to 0 to include 0 activation
-            cmax=np.max(feature_activations),
-        ),
-        text=[
-            f"Token: {token}<br>Context: {context}<br>Activation: {act:.3f}"
-            for token, context, act in zip(
-                pca_df["tokens"], pca_df["context"], feature_activations
-            )
-        ],
-        hoverinfo="text",
-    )
-
-    fig.add_trace(scatter)
-
-    # Update layout
-    fig.update_layout(
-        height=800,
-        width=800,
-        title_text=f"{pc_x} vs {pc_y}, colored by Feature {feature_index} activation",
-        xaxis_title=pc_x,
-        yaxis_title=pc_y,
-    )
-
-    fig.update_xaxes(constrain="domain")
-    fig.update_yaxes(scaleanchor="x")
-
-    if save:
-        # Save as PNG
-        png_path = os.path.join(
-            pca_path,
-            f"pca_plot_graph_{fs_splitting_cluster}_feature_{feature_index}_{pc_x}_vs_{pc_y}.png",
-        )
-        fig.write_image(png_path, scale=4.0)
-
-        # Save as SVG
-        svg_path = os.path.join(
-            pca_path,
-            f"pca_plot_graph_{fs_splitting_cluster}_feature_{feature_index}_{pc_x}_vs_{pc_y}.svg",
-        )
-        fig.write_image(svg_path)
-
-        # Save as HTML
-        html_path = os.path.join(
-            pca_path,
-            f"pca_plot_graph_{fs_splitting_cluster}_feature_{feature_index}_{pc_x}_vs_{pc_y}.html",
-        )
-        fig.write_html(html_path)
-
-        print(f"Plots saved as PNG: {png_path}")
-        print(f"Plots saved as SVG: {svg_path}")
-        print(f"Plots saved as HTML: {html_path}")
-    else:
-        fig.show()
-
-    return fig

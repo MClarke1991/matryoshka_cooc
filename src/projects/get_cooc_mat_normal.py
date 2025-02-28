@@ -663,8 +663,8 @@ def save_config_info(output_dir: str, matryoshka_cfg: dict | None = None, resjb_
 
 def main() -> None:
     # Set parameters
-    n_batches = 500  # Number of batches to process
-    activation_thresholds = [8.0, 10.0]  # Thresholds to try
+    n_batches = 50  # Number of batches to process
+    activation_thresholds = [10.0]  # Thresholds to try
     layer = 8
     remove_special_tokens = True
     output_dir = f"cooc_n_batches_{n_batches}_layer_{layer}"
