@@ -33,11 +33,11 @@ def get_special_tokens(model: HookedTransformer) -> set[int | None]:
     if model.tokenizer is None:
         raise ValueError("Model tokenizer is None")
     special_tokens = {
-        model.tokenizer.bos_token_id,
-        model.tokenizer.eos_token_id,
-        model.tokenizer.pad_token_id,
+        model.tokenizer.bos_token_id,  # type: ignore[arg-type]
+        model.tokenizer.eos_token_id,  # type: ignore[arg-type]
+        model.tokenizer.pad_token_id,  # type: ignore[arg-type]
     }
-    return special_tokens
+    return special_tokens  # type: ignore[return-value]
 
 
 def get_batch_without_special_token_activations_sae_lens(
@@ -158,7 +158,7 @@ def get_batch_without_special_token_activations_matryoshka(
     return filtered_activations
 
 
-def load_matryoshka_sae(checkpoint_path: str | None = None) -> tuple[GlobalBatchTopKMatryoshkaSAE, dict[str, Any]]:
+def load_matryoshka_sae(layer: int, checkpoint_path: str | None = None) -> tuple[GlobalBatchTopKMatryoshkaSAE, dict[str, Any]]:
     """
     Load a trained matryoshka SAE model or initialize a new one with the specified configuration
     
@@ -173,7 +173,7 @@ def load_matryoshka_sae(checkpoint_path: str | None = None) -> tuple[GlobalBatch
     # Configuration for GPT2-small
     cfg = get_default_cfg()
     cfg["model_name"] = "gpt2-small"
-    cfg["layer"] = 8
+    cfg["layer"] = layer
     cfg["site"] = "resid_pre"
     cfg["act_size"] = 768
     cfg["device"] = device
@@ -663,11 +663,11 @@ def save_config_info(output_dir: str, matryoshka_cfg: dict | None = None, resjb_
 
 def main() -> None:
     # Set parameters
-    output_dir = "test_settings"
-    n_batches = 50  # Number of batches to process
-    activation_thresholds = [0.0, 1.5]  # Thresholds to try
+    n_batches = 500  # Number of batches to process
+    activation_thresholds = [8.0, 10.0]  # Thresholds to try
     layer = 8
     remove_special_tokens = True
+    output_dir = f"cooc_n_batches_{n_batches}_layer_{layer}"
     
     device = set_device()
     print(f"Using device: {device}")
@@ -675,7 +675,7 @@ def main() -> None:
     # Load model
     model = HookedTransformer.from_pretrained("gpt2-small").to(device)
     special_tokens = get_special_tokens(model)
-    print("Special Tokens:", [model.tokenizer.decode(token) for token in special_tokens])
+    # print("Special Tokens:", [model.tokenizer.decode(token) for token in special_tokens])
     
     # Create output directory
     os.makedirs(output_dir, exist_ok=True)
@@ -687,7 +687,7 @@ def main() -> None:
     # Try to load Matryoshka SAE
     matryoshka_path = f"checkpoints/gpt2-small_blocks.{layer}.hook_resid_pre_24576_global-matryoshka-topk_32_0.0003_final.pt"
     try:
-        matryoshka_sae, matryoshka_cfg = load_matryoshka_sae(matryoshka_path)
+        matryoshka_sae, matryoshka_cfg = load_matryoshka_sae(layer=layer, checkpoint_path=matryoshka_path)
         matryoshka_loaded = True
         print("Successfully loaded Matryoshka SAE")
     except FileNotFoundError:
