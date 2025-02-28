@@ -97,8 +97,7 @@ def find_most_activating_tokens(
         # Get token embeddings
         with torch.no_grad():
             # Forward pass through embedding layer
-            token_embeddings = model.embed.wte(batch_token_ids)
-            
+            token_embeddings = model.W_E[batch_token_ids]            
             # Encode with SAE
             feature_activations = sae.encode(token_embeddings)
             
