@@ -373,6 +373,15 @@ def process_examples(
 
     logging.info(f"Total examples found: {examples_found}")
     
+    # Limit to max_examples if needed before concatenation
+    if max_examples is not None:
+        all_token_dfs = all_token_dfs[:max_examples] if isinstance(all_token_dfs, list) else all_token_dfs.head(max_examples)
+        all_fired_tokens = all_fired_tokens[:max_examples] if len(all_fired_tokens) > max_examples else all_fired_tokens
+        all_reconstructions = all_reconstructions[:max_examples] if len(all_reconstructions) > max_examples else all_reconstructions
+        all_graph_feature_acts = all_graph_feature_acts[:max_examples] if len(all_graph_feature_acts) > max_examples else all_graph_feature_acts
+        all_max_feature_info = all_max_feature_info[:max_examples] if len(all_max_feature_info) > max_examples else all_max_feature_info
+        logging.info(f"Limited to {max_examples} examples before concatenation")
+    
     # Flatten the list of lists
     all_token_dfs = pd.concat(all_token_dfs) if all_token_dfs else pd.DataFrame()
     all_fired_tokens = list_flatten(all_fired_tokens)
@@ -390,9 +399,9 @@ def process_examples(
         all_max_feature_info = all_max_feature_info[:max_examples]
         logging.info(f"Limited to {max_examples} examples for plotting")
 
-    top_3_tokens, example_context = get_top_tokens_and_context(
-        all_fired_tokens, all_token_dfs
-    ) if all_fired_tokens and not all_token_dfs.empty else ([], "")
+    # top_3_tokens, example_context = get_top_tokens_and_context(
+    #     all_fired_tokens, all_token_dfs
+    # ) if all_fired_tokens and not all_token_dfs.empty else ([], "")
 
     return ProcessedExamples(
         all_token_dfs=all_token_dfs,
@@ -402,8 +411,8 @@ def process_examples(
         all_examples_found=examples_found,
         all_max_feature_info=all_max_feature_info,
         # all_feature_acts=all_feature_acts,
-        top_3_tokens=top_3_tokens,
-        example_context=example_context,
+        # top_3_tokens=top_3_tokens,
+        # example_context=example_context,
     )
 
 
@@ -434,7 +443,7 @@ def perform_pca_on_results(
         method = "full"  # Default to 'full' if invalid
 
     # Perform PCA
-    pca = PCA(n_components=n_components, svd_solver=method)
+    pca = PCA(n_components=n_components, svd_solver=method)  # type: ignore[arg-type]
     pca_embedding = pca.fit_transform(results.all_reconstructions.cpu().numpy())
 
     # Create DataFrame with PCA results
@@ -998,7 +1007,7 @@ def main():
     parser.add_argument("--no_show_plots", action="store_true", help="Don't display plots")
     parser.add_argument("--no_save_data", action="store_true", help="Don't save data and plots")
     parser.add_argument("--include_special_tokens", action="store_true", help="Include special tokens in processing")
-    parser.add_argument("--max_examples", type=int, default=10000, help="Maximum number of examples to process")
+    parser.add_argument("--max_examples", type=int, default=500, help="Maximum number of examples to process")
     
     args = parser.parse_args()
     
