@@ -372,6 +372,7 @@ def process_examples(
             break
 
     logging.info(f"Total examples found: {examples_found}")
+    
     # Flatten the list of lists
     all_token_dfs = pd.concat(all_token_dfs) if all_token_dfs else pd.DataFrame()
     all_fired_tokens = list_flatten(all_fired_tokens)
@@ -379,6 +380,15 @@ def process_examples(
     all_graph_feature_acts = torch.cat(all_graph_feature_acts) if all_graph_feature_acts else torch.tensor([])
     # all_feature_acts = torch.cat(all_feature_acts) if all_feature_acts else torch.tensor([]) 
     all_max_feature_info = torch.cat(all_max_feature_info) if all_max_feature_info else torch.tensor([])
+    
+    # Limit to max_examples if needed
+    if max_examples is not None and len(all_fired_tokens) > max_examples:
+        all_token_dfs = all_token_dfs.iloc[:max_examples]
+        all_fired_tokens = all_fired_tokens[:max_examples]
+        all_reconstructions = all_reconstructions[:max_examples]
+        all_graph_feature_acts = all_graph_feature_acts[:max_examples]
+        all_max_feature_info = all_max_feature_info[:max_examples]
+        logging.info(f"Limited to {max_examples} examples for plotting")
 
     top_3_tokens, example_context = get_top_tokens_and_context(
         all_fired_tokens, all_token_dfs
@@ -417,6 +427,11 @@ def perform_pca_on_results(
             UserWarning,
         )
         return None, None
+
+    # Ensure method is a valid svd_solver value
+    valid_solvers = ["auto", "full", "arpack", "randomized"]
+    if method not in valid_solvers:
+        method = "full"  # Default to 'full' if invalid
 
     # Perform PCA
     pca = PCA(n_components=n_components, svd_solver=method)
@@ -578,7 +593,7 @@ def plot_feature_activations(pca_df, results, feature_list, subgraph_id, show=Tr
         feature_activations,
         labels=dict(x="Feature Index", y="Example", color="Activation"),
         x=[f"Feature {i}" for i in feature_list[:feature_activations.shape[1]]],
-        title=f"Feature Activations for Subgraph {subgraph_id}",
+        title=f"Feature Activations for Subgraph {subgraph_id} (First {max_examples} Examples)",
         color_continuous_scale="Viridis",
     )
     
@@ -780,15 +795,15 @@ def analyze_subgraph(
             save_path=paths["plots"] if save_data else None
         )
         
-        # Plot feature activations
-        plot_feature_activations(
-            pca_df,
-            results,
-            subgraph_nodes,
-            subgraph_id,
-            show=show_plots,
-            save_path=paths["plots"] if save_data else None
-        )
+        # # Plot feature activations
+        # plot_feature_activations(
+        #     pca_df,
+        #     results,
+        #     subgraph_nodes,
+        #     subgraph_id,
+        #     show=show_plots,
+        #     save_path=paths["plots"] if save_data else None
+        # )
         
         # Plot PCA by feature activation
         plot_pca_by_feature_activation(
@@ -801,13 +816,13 @@ def analyze_subgraph(
         )
         
         # Plot PCA of decoder weights if available
-        if pca_decoder is not None and pca_decoder_df is not None:
-            plot_decoder_pca(
-                pca_decoder_df,
-                subgraph_id,
-                show=show_plots,
-                save_path=paths["plots"] if save_data else None
-            )
+        # if pca_decoder is not None and pca_decoder_df is not None:
+        #     plot_decoder_pca(
+        #         pca_decoder_df,
+        #         subgraph_id,
+        #         show=show_plots,
+        #         save_path=paths["plots"] if save_data else None
+        #     )
         
         logging.info("All plots generated successfully")
     else:
@@ -934,7 +949,12 @@ def analyze_features_with_pca(results_dir, sae_path, output_dir, layer: int):
     
     # Find significant subgraphs (those with at least 10 nodes)
     subgraph_sizes = node_df.query("subgraph_id != 'Not in subgraph'").groupby("subgraph_id").size()
-    significant_subgraphs = subgraph_sizes[subgraph_sizes >= 10].index.tolist()
+    
+    # Filter for subgraphs with at least 10 nodes
+    significant_subgraphs = []
+    for subgraph_id, size in subgraph_sizes.items():
+        if size == 10:
+            significant_subgraphs.append(subgraph_id)
     
     if not significant_subgraphs:
         logging.error("No significant subgraphs found")
