@@ -1,8 +1,9 @@
 import torch
+import tqdm
+from datasets import Dataset, load_dataset
 from torch.utils.data import DataLoader, TensorDataset
 from transformer_lens.hook_points import HookedRootModule
-from datasets import Dataset, load_dataset
-import tqdm
+
 
 class ActivationsStore:
     def __init__(
