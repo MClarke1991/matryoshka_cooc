@@ -174,4 +174,10 @@ cython_debug/
 .DS_Store
 .vscode/*
 *.pt
+wandb/*
+config.json
+*.pkl
+*.png 
+*.npz
+*.html
 untracked/*
